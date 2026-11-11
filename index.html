@@ -51,6 +51,14 @@
   let scanner = null;
   let targetUrl = '';
   let busy = false;
+  const SESSION_KEY = 'qr_attendance_panitia_session_v1';
+  const incomingSession = new URLSearchParams(window.location.search).get('session') || '';
+  if (/^[a-f0-9]{32}$/i.test(incomingSession)) {
+    try { localStorage.setItem(SESSION_KEY, incomingSession); } catch (_) {}
+  }
+  function getSessionToken() {
+    try { return localStorage.getItem(SESSION_KEY) || ''; } catch (_) { return ''; }
+  }
 
   function showMessage(text, type='') {
     message.className = 'message' + (type ? ' ' + type : '');
@@ -91,7 +99,12 @@
       busy = false;
       return;
     }
-    targetUrl = decodedText;
+    const sessionToken = getSessionToken();
+    const participantUrl = new URL(decodedText);
+    if (/^[a-f0-9]{32}$/i.test(sessionToken)) {
+      participantUrl.searchParams.set('session', sessionToken);
+    }
+    targetUrl = participantUrl.toString();
     showMessage('QR peserta berhasil dibaca. Tekan tombol di bawah untuk membuka halaman konfirmasi.', 'success');
     openArea.classList.remove('hidden');
     againBtn.classList.remove('hidden');
