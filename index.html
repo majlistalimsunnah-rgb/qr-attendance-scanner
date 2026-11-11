@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#10251d">
+  <title>QR Attendance Scanner</title>
+  <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+  <style>
+    :root{font-family:Arial,Helvetica,sans-serif;color:#172033;background:#f3f6f4}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;padding:22px;display:flex;align-items:center;justify-content:center}
+    .app{width:100%;max-width:480px;background:#fff;border-radius:22px;padding:24px;box-shadow:0 12px 36px rgba(15,23,42,.09)}
+    .brand{width:52px;height:52px;border-radius:16px;background:#e8f5ec;color:#15803d;display:grid;place-items:center;font-size:27px;margin:0 auto 14px}
+    h1{text-align:center;font-size:22px;margin:0 0 8px}
+    .intro{text-align:center;color:#64748b;font-size:14px;line-height:1.5;margin:0 0 22px}
+    #reader{width:100%;overflow:hidden;border-radius:14px}
+    #reader video{border-radius:12px}
+    .btn{width:100%;border:0;border-radius:11px;padding:15px 16px;font-weight:700;font-size:15px;background:#15803d;color:#fff;margin-top:14px;cursor:pointer}
+    .btn.secondary{background:#e8edf0;color:#172033}
+    .btn:disabled{opacity:.55;cursor:not-allowed}
+    .message{margin-top:14px;padding:13px;border-radius:11px;background:#f1f5f9;color:#334155;font-size:14px;line-height:1.5;overflow-wrap:anywhere}
+    .message.error{background:#fef2f2;color:#991b1b}
+    .message.success{background:#ecfdf5;color:#166534}
+    .hidden{display:none!important}
+    .foot{text-align:center;color:#94a3b8;font-size:12px;margin:20px 0 0}
+    a{color:#166534;overflow-wrap:anywhere}
+  </style>
+</head>
+<body>
+  <main class="app">
+    <div class="brand">✓</div>
+    <h1>QR Attendance Scanner</h1>
+    <p class="intro">Arahkan kamera ke QR Code peserta. Sistem akan membuka halaman konfirmasi kehadiran peserta.</p>
+    <div id="reader"></div>
+    <button id="startBtn" class="btn" type="button">MULAI SCAN</button>
+    <button id="againBtn" class="btn secondary hidden" type="button">SCAN PESERTA BERIKUTNYA</button>
+    <div id="message" class="message" role="status">Tekan Mulai Scan dan izinkan akses kamera jika diminta.</div>
+    <div id="openArea" class="hidden">
+      <button id="openBtn" class="btn" type="button">BUKA HALAMAN PESERTA</button>
+    </div>
+    <p class="foot">QR Attendance System</p>
+  </main>
+<script>
+(() => {
+  const startBtn = document.getElementById('startBtn');
+  const againBtn = document.getElementById('againBtn');
+  const message = document.getElementById('message');
+  const openArea = document.getElementById('openArea');
+  const openBtn = document.getElementById('openBtn');
+  let scanner = null;
+  let targetUrl = '';
+  let busy = false;
+
+  function showMessage(text, type='') {
+    message.className = 'message' + (type ? ' ' + type : '');
+    message.textContent = text;
+  }
+
+  function validParticipantUrl(raw) {
+    try {
+      const url = new URL(raw);
+      const token = url.searchParams.get('token') || '';
+      return url.protocol === 'https:' &&
+        url.hostname === 'script.google.com' &&
+        url.pathname.includes('/macros/s/') &&
+        url.pathname.endsWith('/exec') &&
+        /^[a-f0-9]{32}$/i.test(token);
+    } catch (_) { return false; }
+  }
+
+  async function stopScanner() {
+    if (scanner) {
+      try {
+        const state = scanner.getState();
+        if (state === Html5QrcodeScannerState.SCANNING) await scanner.stop();
+      } catch (_) {}
+      try { await scanner.clear(); } catch (_) {}
+      scanner = null;
+    }
+  }
+
+  async function onScanSuccess(decodedText) {
+    if (busy) return;
+    busy = true;
+    await stopScanner();
+    startBtn.classList.add('hidden');
+    if (!validParticipantUrl(decodedText)) {
+      showMessage('QR terbaca, tetapi tautannya bukan QR peserta yang valid. Pastikan menggunakan QR dari sistem pendaftaran.', 'error');
+      againBtn.classList.remove('hidden');
+      busy = false;
+      return;
+    }
+    targetUrl = decodedText;
+    showMessage('QR peserta berhasil dibaca. Tekan tombol di bawah untuk membuka halaman konfirmasi.', 'success');
+    openArea.classList.remove('hidden');
+    againBtn.classList.remove('hidden');
+  }
+
+  async function startScanner() {
+    startBtn.disabled = true;
+    showMessage('Meminta akses kamera...');
+    openArea.classList.add('hidden');
+    againBtn.classList.add('hidden');
+    targetUrl = '';
+    busy = false;
+
+    if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      showMessage('Browser tidak menyediakan akses kamera. Pastikan halaman dibuka melalui HTTPS menggunakan Chrome.', 'error');
+      startBtn.disabled = false;
+      return;
+    }
+    if (typeof Html5Qrcode === 'undefined') {
+      showMessage('Library scanner tidak berhasil dimuat. Periksa koneksi internet lalu muat ulang halaman.', 'error');
+      startBtn.disabled = false;
+      return;
+    }
+
+    try {
+      scanner = new Html5Qrcode('reader');
+      await scanner.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1 },
+        onScanSuccess,
+        () => {}
+      );
+      showMessage('Kamera aktif. Arahkan ke QR Code peserta.');
+      startBtn.classList.add('hidden');
+    } catch (err) {
+      const name = err && err.name ? err.name : 'Error';
+      let detail = err && err.message ? err.message : String(err);
+      if (name === 'NotAllowedError') detail = 'Akses kamera ditolak. Periksa izin Kamera untuk Chrome dan izin situs GitHub Pages.';
+      else if (name === 'NotFoundError') detail = 'Kamera tidak ditemukan pada perangkat ini.';
+      else if (name === 'NotReadableError') detail = 'Kamera sedang digunakan aplikasi lain. Tutup aplikasi kamera/meeting lalu coba lagi.';
+      else if (name === 'OverconstrainedError') detail = 'Kamera belakang tidak tersedia. Coba perangkat lain.';
+      showMessage('Tidak dapat membuka kamera (' + name + '): ' + detail, 'error');
+      await stopScanner();
+      startBtn.classList.remove('hidden');
+      startBtn.disabled = false;
+    }
+  }
+
+  startBtn.addEventListener('click', startScanner);
+  openBtn.addEventListener('click', () => {
+    if (targetUrl) window.location.href = targetUrl;
+  });
+  againBtn.addEventListener('click', async () => {
+    await stopScanner();
+    document.getElementById('reader').innerHTML = '';
+    startBtn.classList.remove('hidden');
+    startBtn.disabled = false;
+    againBtn.classList.add('hidden');
+    openArea.classList.add('hidden');
+    showMessage('Tekan Mulai Scan untuk memindai peserta berikutnya.');
+    busy = false;
+  });
+})();
+</script>
+</body>
+</html>
