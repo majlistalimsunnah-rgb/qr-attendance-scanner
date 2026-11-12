@@ -31,7 +31,7 @@
   <main class="app">
     <div class="brand">✓</div>
     <h1>QR Attendance Scanner</h1>
-    <p class="intro">Arahkan kamera ke QR Code peserta. Sistem akan membuka halaman konfirmasi kehadiran peserta.</p>
+    <p class="intro">Arahkan kamera ke QR pendaftaran atau QR konsumsi. Sistem akan membuka halaman sesuai jenis QR yang dipindai.</p>
     <div id="reader"></div>
     <button id="startBtn" class="btn" type="button">MULAI SCAN</button>
     <button id="againBtn" class="btn secondary hidden" type="button">SCAN PESERTA BERIKUTNYA</button>
@@ -69,10 +69,12 @@
     try {
       const url = new URL(raw);
       const token = url.searchParams.get('token') || '';
+      const page = url.searchParams.get('page') || 'participant';
       return url.protocol === 'https:' &&
         url.hostname === 'script.google.com' &&
         url.pathname.includes('/macros/s/') &&
         url.pathname.endsWith('/exec') &&
+        ['participant','consume'].includes(page) &&
         /^[a-f0-9]{32}$/i.test(token);
     } catch (_) { return false; }
   }
@@ -94,7 +96,7 @@
     await stopScanner();
     startBtn.classList.add('hidden');
     if (!validParticipantUrl(decodedText)) {
-      showMessage('QR terbaca, tetapi tautannya bukan QR peserta yang valid. Pastikan menggunakan QR dari sistem pendaftaran.', 'error');
+      showMessage('QR terbaca, tetapi tautannya bukan QR pendaftaran atau QR konsumsi yang valid.', 'error');
       againBtn.classList.remove('hidden');
       busy = false;
       return;
@@ -105,7 +107,7 @@
       participantUrl.searchParams.set('session', sessionToken);
     }
     targetUrl = participantUrl.toString();
-    showMessage('QR peserta berhasil dibaca. Tekan tombol di bawah untuk membuka halaman konfirmasi.', 'success');
+    showMessage((new URL(decodedText).searchParams.get('page') === 'consume' ? 'QR konsumsi berhasil dibaca. Tekan tombol di bawah untuk membuka verifikasi pengambilan.' : 'QR pendaftaran berhasil dibaca. Tekan tombol di bawah untuk membuka konfirmasi kehadiran.'), 'success');
     openArea.classList.remove('hidden');
     againBtn.classList.remove('hidden');
   }
